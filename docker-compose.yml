@@ -1,0 +1,121 @@
+services:
+  # =============================================================================
+  # APISIX Gateway - Main entry point for all traffic
+  # =============================================================================
+  apisix:
+    image: apache/apisix:3.8.0-debian
+    container_name: apisix
+    restart: unless-stopped
+    volumes:
+      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    ports:
+      - "9080:9080"   # HTTP proxy port (main entry point)
+      - "9443:9443"   # HTTPS proxy port
+    networks:
+      - apisix-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9090/v1/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # =============================================================================
+  # PostgreSQL - Database for Keycloak
+  # =============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - apisix-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =============================================================================
+  # Keycloak - Identity Provider (NOT exposed to host, only via APISIX)
+  # =============================================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.3
+    container_name: keycloak
+    restart: unless-stopped
+    command:
+      - start-dev
+      - --import-realm
+      - --proxy=edge
+      - --hostname-strict=false
+      - --http-enabled=true
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      # Critical: Set the frontend URL to APISIX proxy path
+      KC_HOSTNAME_URL: http://localhost:9080/auth
+      KC_HOSTNAME_ADMIN_URL: http://localhost:9080/auth
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    networks:
+      - apisix-network
+    # NOTE: No ports exposed! Keycloak is only accessible through APISIX
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  # =============================================================================
+  # Test Service - Simple Nginx service protected by APISIX OIDC
+  # =============================================================================
+  test-service:
+    image: nginx:alpine
+    container_name: test-service
+    restart: unless-stopped
+    volumes:
+      - ./test-service/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./test-service/index.html:/usr/share/nginx/html/index.html:ro
+    networks:
+      - apisix-network
+    # NOTE: No ports exposed! Test service is only accessible through APISIX
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  apisix-network:
+    driver: bridge
+    name: apisix-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
