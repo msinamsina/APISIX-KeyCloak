@@ -24,6 +24,7 @@ A production-ready Dockerized project featuring Apache APISIX as an API Gateway 
     │  PORT 9080 (HTTP) / 9443 (HTTPS)                                             │
     │  ┌────────────────────────────────────────────────────────────────────────┐  │
     │  │                        APACHE APISIX GATEWAY                           │  │
+    │  │                         (Standalone Mode)                              │  │
     │  │                                                                        │  │
     │  │   ┌──────────────────────────────────────────────────────────────┐    │  │
     │  │   │                      ENABLED PLUGINS                          │    │  │
@@ -39,14 +40,13 @@ A production-ready Dockerized project featuring Apache APISIX as an API Gateway 
     │  │   /resources/*────────────────────▶  Keycloak (Static Assets)         │  │
     │  │                                                                        │  │
     │  └────────────────────────────────────────────────────────────────────────┘  │
-    │                                                                              │
-    │  PORT 9180 (Admin API) │ PORT 9000 (Dashboard)                               │
     └──────────────────────────────────────────────────────────────────────────────┘
                │
                │ INTERNAL NETWORK (apisix-network)
                ▼
     ┌──────────────────────────────────────────────────────────────────────────────┐
     │                           INTERNAL SERVICES                                   │
+    │                     (NOT exposed to host network)                            │
     │                                                                              │
     │   ┌─────────────────────┐    ┌─────────────────────┐    ┌────────────────┐  │
     │   │      KEYCLOAK       │    │    TEST SERVICE     │    │   POSTGRES     │  │
@@ -57,15 +57,15 @@ A production-ready Dockerized project featuring Apache APISIX as an API Gateway 
     │   │  │ apisix-demo   │  │    │  │  Static Site  │  │    │  │    DB    │  │  │
     │   │  ├───────────────┤  │    │  └───────────────┘  │    │  └──────────┘  │  │
     │   │  │ Client:       │  │    │                     │    │                │  │
-    │   │  │ apisix-client │  │    │  NOT EXPOSED        │    │  NOT EXPOSED   │  │
-    │   │  ├───────────────┤  │    │  TO HOST            │    │  TO HOST       │  │
+    │   │  │ apisix-client │  │    │  ❌ NOT EXPOSED     │    │  ❌ NOT EXPOSED │  │
+    │   │  ├───────────────┤  │    │     TO HOST         │    │     TO HOST    │  │
     │   │  │ Users:        │  │    │                     │    │                │  │
-    │   │  │ testuser      │  │    └─────────────────────┘    └────────────────┘  │
-    │   │  │ adminuser     │  │                                                    │
+    │   │  │ • testuser    │  │    └─────────────────────┘    └────────────────┘  │
+    │   │  │ • adminuser   │  │                                                    │
     │   │  └───────────────┘  │                                                    │
     │   │                     │                                                    │
-    │   │  NOT EXPOSED        │                                                    │
-    │   │  TO HOST            │                                                    │
+    │   │  ❌ NOT EXPOSED     │                                                    │
+    │   │     TO HOST         │                                                    │
     │   └─────────────────────┘                                                    │
     │                                                                              │
     └──────────────────────────────────────────────────────────────────────────────┘
@@ -80,12 +80,12 @@ A production-ready Dockerized project featuring Apache APISIX as an API Gateway 
 - Docker Engine 20.10+
 - Docker Compose v2.0+
 - 4GB+ available RAM
-- Ports 9000, 9080, 9180, 9443 available
+- Ports 9080, 9443 available
 
 ### Start the Project
 
 ```bash
-# Clone/navigate to the project directory
+# Navigate to the project directory
 cd project
 
 # Start all services
@@ -94,7 +94,7 @@ docker-compose up -d
 # Watch the logs (optional)
 docker-compose logs -f
 
-# Wait for all services to be healthy (~60-90 seconds)
+# Wait for all services to be healthy (~90-120 seconds for Keycloak)
 docker-compose ps
 ```
 
@@ -105,12 +105,11 @@ docker-compose ps
 docker-compose ps
 
 # Expected output:
-# NAME               STATUS                   PORTS
-# apisix             Up (healthy)             0.0.0.0:9080->9080/tcp, ...
-# apisix-dashboard   Up                       0.0.0.0:9000->9000/tcp
-# keycloak           Up (healthy)             8080/tcp (internal only)
-# postgres           Up (healthy)             5432/tcp (internal only)
-# test-service       Up (healthy)             80/tcp (internal only)
+# NAME           STATUS                   PORTS
+# apisix         Up (healthy)             0.0.0.0:9080->9080/tcp, ...
+# keycloak       Up (healthy)             8080/tcp (internal only)
+# postgres       Up (healthy)             5432/tcp (internal only)
+# test-service   Up (healthy)             80/tcp (internal only)
 ```
 
 ---
@@ -120,7 +119,6 @@ docker-compose ps
 | Service | URL | Description |
 |---------|-----|-------------|
 | **APISIX Gateway** | http://localhost:9080 | Main API Gateway entry point |
-| **APISIX Dashboard** | http://localhost:9000 | Web UI for APISIX management |
 | **Keycloak (via APISIX)** | http://localhost:9080/auth | Keycloak admin console |
 | **Protected Service** | http://localhost:9080/test | OIDC-protected test service |
 | **OIDC Discovery** | http://localhost:9080/realms/apisix-demo/.well-known/openid-configuration | OIDC metadata |
@@ -128,11 +126,6 @@ docker-compose ps
 ---
 
 ## 🔐 Default Credentials
-
-### APISIX Dashboard
-- **URL:** http://localhost:9000
-- **Username:** `admin`
-- **Password:** `admin`
 
 ### Keycloak Admin Console
 - **URL:** http://localhost:9080/auth/admin
@@ -210,7 +203,7 @@ curl -I http://localhost:9080/test
 
 ```bash
 # Access Keycloak through APISIX
-curl -I http://localhost:9080/auth
+curl -I http://localhost:9080/auth/
 
 # Expected: HTTP/1.1 200 OK
 ```
@@ -237,7 +230,7 @@ curl http://localhost:8080
 # Expected: curl: (7) Failed to connect to localhost port 8080
 
 # This should WORK (through APISIX)
-curl http://localhost:9080/auth
+curl http://localhost:9080/auth/
 # Expected: Keycloak welcome page or redirect
 ```
 
@@ -251,9 +244,8 @@ project/
 ├── README.md                   # This documentation
 │
 ├── apisix/
-│   ├── config.yaml             # APISIX main configuration
-│   ├── apisix.yaml             # Routes, upstreams, consumers
-│   └── dashboard-config.yaml   # APISIX Dashboard configuration
+│   ├── config.yaml             # APISIX main configuration (standalone mode)
+│   └── apisix.yaml             # Routes and upstreams configuration
 │
 ├── keycloak/
 │   └── realm-export.json       # Pre-configured realm with users & client
@@ -279,12 +271,11 @@ project/
 
 | Route | Path | Auth | Backend |
 |-------|------|------|---------|
-| keycloak_route | `/auth/*` | None | Keycloak (8080) |
-| keycloak_realms_route | `/realms/*` | None | Keycloak (8080) |
-| keycloak_resources_route | `/resources/*` | None | Keycloak (8080) |
-| keycloak_js_route | `/js/*` | None | Keycloak (8080) |
-| test_service_route | `/test/*` | **OIDC** | Nginx (80) |
-| test_service_root_route | `/test` | **OIDC** | Nginx (80) |
+| keycloak_auth | `/auth`, `/auth/*` | None | Keycloak (8080) |
+| keycloak_realms | `/realms/*` | None | Keycloak (8080) |
+| keycloak_resources | `/resources/*` | None | Keycloak (8080) |
+| keycloak_js | `/js/*` | None | Keycloak (8080) |
+| test_service | `/test`, `/test/*` | **OIDC** | Nginx (80) |
 
 ### Keycloak Configuration
 
@@ -337,9 +328,12 @@ Edit `keycloak/realm-export.json` and add a new user object in the `users` array
 Edit `apisix/apisix.yaml` and add a new route with the `openid-connect` plugin:
 
 ```yaml
-- id: my_new_route
+- id: 8
   uri: /my-service/*
-  upstream_id: my_service_upstream
+  upstream:
+    type: roundrobin
+    nodes:
+      "my-service:80": 1
   plugins:
     openid-connect:
       discovery: "http://keycloak:8080/realms/apisix-demo/.well-known/openid-configuration"
@@ -369,7 +363,7 @@ docker-compose up -d
 
 ### Keycloak Health Check Failing
 
-Keycloak takes ~60-90 seconds to fully initialize. Wait and check again:
+Keycloak takes ~90-120 seconds to fully initialize. Wait and check again:
 
 ```bash
 # Watch logs until "Keycloak ... started"
@@ -379,24 +373,22 @@ docker-compose logs -f keycloak
 ### OIDC Redirect Not Working
 
 1. Clear browser cookies for `localhost`
-2. Verify Keycloak is accessible: `curl http://localhost:9080/auth`
+2. Verify Keycloak is accessible: `curl http://localhost:9080/auth/`
 3. Check APISIX logs: `docker-compose logs apisix`
-
-### Cannot Access APISIX Dashboard
-
-```bash
-# Verify dashboard is running
-docker-compose ps apisix-dashboard
-
-# Check dashboard logs
-docker-compose logs apisix-dashboard
-```
 
 ### "Invalid redirect_uri" Error
 
 Ensure the redirect URI in your request matches exactly what's configured in Keycloak:
 - `http://localhost:9080/test/callback`
 - `http://localhost:9080/*`
+
+### APISIX Shows "Unhealthy"
+
+The healthcheck may take a few attempts. Check if APISIX is actually responding:
+```bash
+curl http://localhost:9080/auth/
+```
+If this works, APISIX is functioning correctly.
 
 ---
 
@@ -411,7 +403,6 @@ docker-compose down -v
 
 # Remove all related images (optional)
 docker rmi apache/apisix:3.8.0-debian
-docker rmi apache/apisix-dashboard:3.0.1-alpine
 docker rmi quay.io/keycloak/keycloak:23.0.3
 docker rmi postgres:15-alpine
 docker rmi nginx:alpine
@@ -458,8 +449,6 @@ docker rmi nginx:alpine
     │ 11. Redirect to /test                  │                                        │
     │───────────────────────────────────────▶│                                        │
     │                                        │ 12. Validate session                   │
-    │                                        │───────────────────────────────────────▶│
-    │                                        │◀───────────────────────────────────────│
     │                                        │                                        │
     │ 13. Proxy to test-service              │──────────────────┐                     │
     │                                        │                  │                     │
@@ -468,6 +457,16 @@ docker rmi nginx:alpine
     │◀───────────────────────────────────────│                                        │
     │                                        │                                        │
 ```
+
+---
+
+## 🔒 Security Notes
+
+1. **Keycloak is NOT directly exposed** - All access goes through APISIX
+2. **PostgreSQL is NOT directly exposed** - Only accessible within Docker network
+3. **Test service is NOT directly exposed** - Only accessible through APISIX after authentication
+4. **Change default credentials in production** - Update all passwords and secrets
+5. **Enable HTTPS in production** - Configure SSL certificates for port 9443
 
 ---
 
@@ -487,4 +486,3 @@ For issues related to:
 ---
 
 **Happy Coding! 🎉**
-
