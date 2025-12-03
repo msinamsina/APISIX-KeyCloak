@@ -1,0 +1,42 @@
+#
+# APISIX Dashboard Configuration
+#
+
+conf:
+  listen:
+    host: 0.0.0.0
+    port: 9000
+  etcd:
+    endpoints:
+      - "http://apisix:9180"
+  log:
+    error_log:
+      level: warn
+      file_path: /dev/stderr
+    access_log:
+      file_path: /dev/stdout
+
+authentication:
+  secret: "dashboard-secret-key-change-in-production"
+  expire_time: 3600
+  users:
+    - username: admin
+      password: admin
+
+plugins:
+  - openid-connect
+  - proxy-rewrite
+  - consumer-restriction
+  - response-rewrite
+  - redirect
+  - real-ip
+  - cors
+  - request-id
+  - ip-restriction
+  - uri-blocker
+  - request-validation
+  - jwt-auth
+  - key-auth
+  - basic-auth
+  - authz-keycloak
+

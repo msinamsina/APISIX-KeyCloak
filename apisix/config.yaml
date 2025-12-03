@@ -1,0 +1,39 @@
+#
+# APISIX Configuration File
+#
+
+apisix:
+  node_listen: 9080
+  enable_ipv6: false
+  enable_admin: false
+  enable_control: true
+  control:
+    ip: "0.0.0.0"
+    port: 9090
+  ssl:
+    enable: true
+    listen:
+      - port: 9443
+
+# Standalone deployment mode - uses apisix.yaml for routes
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+
+# Plugin configuration
+plugins:
+  - openid-connect
+  - proxy-rewrite
+  - consumer-restriction
+  - response-rewrite
+  - redirect
+  - real-ip
+  - cors
+  - request-id
+
+# Plugin attributes
+plugin_attr:
+  openid-connect:
+    timeout: 10
+    ssl_verify: false

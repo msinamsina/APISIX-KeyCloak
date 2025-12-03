@@ -1,0 +1,137 @@
+#
+# APISIX Routes Configuration (Standalone/Data Plane Mode)
+#
+
+routes:
+  # Keycloak Admin Console and Auth Endpoints (with trailing content)
+  - id: 1
+    uri: /auth/*
+    name: keycloak-auth-route
+    upstream:
+      type: roundrobin
+      nodes:
+        "keycloak:8080": 1
+    plugins:
+      proxy-rewrite:
+        regex_uri:
+          - "^/auth/(.*)"
+          - "/$1"
+        headers:
+          set:
+            X-Forwarded-Proto: "http"
+            X-Forwarded-Host: "localhost:9080"
+            X-Forwarded-Prefix: "/auth"
+
+  # Keycloak root (redirect to welcome page)
+  - id: 7
+    uri: /auth
+    name: keycloak-auth-root
+    upstream:
+      type: roundrobin
+      nodes:
+        "keycloak:8080": 1
+    plugins:
+      proxy-rewrite:
+        uri: "/"
+        headers:
+          set:
+            X-Forwarded-Proto: "http"
+            X-Forwarded-Host: "localhost:9080"
+            X-Forwarded-Prefix: "/auth"
+
+  # Keycloak Realms (for OIDC discovery and token endpoints)
+  - id: 2
+    uri: /realms/*
+    name: keycloak-realms-route
+    upstream:
+      type: roundrobin
+      nodes:
+        "keycloak:8080": 1
+    plugins:
+      proxy-rewrite:
+        headers:
+          set:
+            X-Forwarded-Proto: "http"
+            X-Forwarded-Host: "localhost:9080"
+
+  # Keycloak Resources (JS, CSS, images)
+  - id: 3
+    uri: /resources/*
+    name: keycloak-resources-route
+    upstream:
+      type: roundrobin
+      nodes:
+        "keycloak:8080": 1
+
+  # Keycloak JS adapter
+  - id: 4
+    uri: /js/*
+    name: keycloak-js-route
+    upstream:
+      type: roundrobin
+      nodes:
+        "keycloak:8080": 1
+
+  # Protected Test Service with OIDC Authentication
+  - id: 5
+    uri: /test/*
+    name: test-service-protected-route
+    upstream:
+      type: roundrobin
+      nodes:
+        "test-service:80": 1
+    plugins:
+      openid-connect:
+        discovery: "http://keycloak:8080/realms/apisix-demo/.well-known/openid-configuration"
+        client_id: "apisix-client"
+        client_secret: "apisix-client-secret"
+        redirect_uri: "http://localhost:9080/test/callback"
+        scope: "openid profile email"
+        bearer_only: false
+        realm: "apisix-demo"
+        introspection_endpoint_auth_method: "client_secret_post"
+        logout_path: "/test/logout"
+        post_logout_redirect_uri: "http://localhost:9080/test/"
+        ssl_verify: false
+        session:
+          secret: "super-secret-session-key-change-in-production-32chars"
+        set_access_token_header: true
+        set_id_token_header: true
+        set_userinfo_header: true
+        access_token_in_authorization_header: true
+      proxy-rewrite:
+        regex_uri:
+          - "^/test/(.*)"
+          - "/$1"
+
+  # Test Service Root (also protected)
+  - id: 6
+    uri: /test
+    name: test-service-root-route
+    upstream:
+      type: roundrobin
+      nodes:
+        "test-service:80": 1
+    plugins:
+      openid-connect:
+        discovery: "http://keycloak:8080/realms/apisix-demo/.well-known/openid-configuration"
+        client_id: "apisix-client"
+        client_secret: "apisix-client-secret"
+        redirect_uri: "http://localhost:9080/test/callback"
+        scope: "openid profile email"
+        bearer_only: false
+        realm: "apisix-demo"
+        introspection_endpoint_auth_method: "client_secret_post"
+        logout_path: "/test/logout"
+        post_logout_redirect_uri: "http://localhost:9080/test"
+        ssl_verify: false
+        session:
+          secret: "super-secret-session-key-change-in-production-32chars"
+        set_access_token_header: true
+        set_id_token_header: true
+        set_userinfo_header: true
+        access_token_in_authorization_header: true
+      proxy-rewrite:
+        uri: "/"
+
+#END
